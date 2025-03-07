@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetching all history to ensure proper version detection
 
       - name: Set up Python 3.12.6
         uses: actions/setup-python@v4
@@ -28,6 +30,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pyinstaller
 
       - name: Get version from tag
         id: get_version
@@ -37,28 +40,15 @@ jobs:
           echo "version=$VERSION" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: Update version info
-        run: |
-          $VERSION = "${{ steps.get_version.outputs.version }}"
-          $CONTENT = Get-Content -Path spec/version_info.txt -Raw
-          $CONTENT = $CONTENT -replace "filevers=\(\d+, \d+, \d+, \d+\)", "filevers=($($VERSION.Split('.') -join ', '), 0)"
-          $CONTENT = $CONTENT -replace "prodvers=\(\d+, \d+, \d+, \d+\)", "prodvers=($($VERSION.Split('.') -join ', '), 0)"
-          $CONTENT = $CONTENT -replace "u'FileVersion', u'\d+\.\d+\.\d+'", "u'FileVersion', u'$VERSION'"
-          $CONTENT = $CONTENT -replace "u'ProductVersion', u'\d+\.\d+\.\d+'", "u'ProductVersion', u'$VERSION'"
-          $CONTENT | Set-Content -Path version_info.txt
-        shell: pwsh
+      - name: Clean previous builds
+        run: python build.py clean
 
-      - name: Build application
-        run: |
-          python build.py build
+      - name: Build custom bootloader
+        run: python build.py bootloader
 
-      - name: Build installer
+      - name: Build and package application
         run: |
-          python build.py installer
-
-      - name: Create release package
-        run: |
-          python build.py package
+          python build.py all --version ${{ steps.get_version.outputs.version }} --app-uac asInvoker --installer-uac requireAdministrator
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

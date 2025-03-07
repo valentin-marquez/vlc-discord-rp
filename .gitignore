@@ -51,3 +51,4 @@ release/
 VLC_Discord_RP.zip
 !spec/*.spec
 vlc_discord_rp.log
+pyinstaller_repo/

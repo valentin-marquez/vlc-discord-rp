@@ -27,7 +27,7 @@
     },
     "ruff.lint.select": ["E", "F", "I"],
     "ruff.organizeImports": true,
-    "ruff.lineLength": 88,
+    "ruff.lineLength": 100,
 
     "[lua]": {
         "editor.quickSuggestions": {
