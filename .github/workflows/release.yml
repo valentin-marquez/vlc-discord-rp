@@ -83,14 +83,16 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          name: VLC Discord Rich Presence ${{ steps.get_version.outputs.version }}
+          name: VLC Discord Rich Presence ${{ steps.get_version.outputs.version }} (Pre-release)
           body: |
             ${{ steps.changelog.outputs.text }}
 
             ## Installation
             Download and run the installer (`VLC Discord RP Setup.exe`), or use the standalone application.
+
+            **Note**: This is a pre-release version and may contain bugs.
           files: |
             dist/VLC Discord RP Setup.exe
             VLC_Discord_RP.zip
           draft: false
-          prerelease: false
+          prerelease: true  # Changed to true for pre-release
