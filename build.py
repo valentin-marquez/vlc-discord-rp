@@ -38,6 +38,48 @@ def clean():
 		return False
 
 
+def sign_executable(exe_path, certificate_path, password=None):
+	"""Sign an executable with signtool.exe"""
+	print(f"Signing executable: {exe_path}")
+
+	if not os.path.exists(exe_path):
+		print(f"Error: Executable not found at {exe_path}")
+		return False
+
+	# Build signing command
+	sign_cmd = [
+		"signtool",
+		"sign",
+		"/f",
+		certificate_path,
+		"/fd",
+		"SHA256",
+		"/tr",
+		"http://timestamp.digicert.com",
+		"/td",
+		"SHA256",
+	]
+
+	# Add password if provided
+	if password:
+		sign_cmd.extend(["/p", password])
+
+	sign_cmd.append(exe_path)
+
+	try:
+		result = subprocess.run(sign_cmd, capture_output=True, text=True)
+
+		if result.returncode == 0:
+			print(f"Successfully signed {exe_path}")
+			return True
+		else:
+			print(f"Signing failed: {result.stderr}")
+			return False
+	except Exception as e:
+		print(f"Error during signing: {e}")
+		return False
+
+
 def build_bootloader():
 	"""Build custom PyInstaller bootloader"""
 	print("Building custom PyInstaller bootloader...")
@@ -157,7 +199,7 @@ def build_bootloader():
 		return False
 
 
-def build_app(version=None, dev=False, uac_level=None):
+def build_app(version=None, dev=False, uac_level=None, sign_cert=None, sign_pass=None):
 	"""Build the VLC Discord RP application executable"""
 	print("Building VLC Discord Rich Presence application...")
 
@@ -200,6 +242,11 @@ def build_app(version=None, dev=False, uac_level=None):
 	# Restore original spec file if modified
 	if dev and os.path.exists(f"{spec_file_path}.bak"):
 		shutil.move(f"{spec_file_path}.bak", spec_file_path)
+
+	# Después de construir la aplicación, firmar si se proporciona certificado
+	if success and sign_cert:
+		app_path = os.path.join("dist", "VLC Discord Presence.exe")
+		sign_executable(app_path, sign_cert, sign_pass)
 
 	return success
 
@@ -291,7 +338,7 @@ def create_default_manifest(manifest_path, uac_level):
 		f.write(manifest_content)
 
 
-def build_installer(uac_level=None):
+def build_installer(uac_level=None, sign_cert=None, sign_pass=None):
 	"""Build the installer executable"""
 	print("Building installer...")
 
@@ -322,12 +369,17 @@ def build_installer(uac_level=None):
 			print(result.stderr)
 
 		installer_path = os.path.join("dist", "VLC Discord RP Setup.exe")
-		if os.path.exists(installer_path):
+		success = os.path.exists(installer_path)
+		if success:
 			print(f"Installer created successfully at {installer_path}")
-			return True
 		else:
 			print(f"Installer not found at expected location {installer_path}")
-			return False
+
+		# Después de construir el instalador, firmar si se proporciona certificado
+		if success and sign_cert:
+			sign_executable(installer_path, sign_cert, sign_pass)
+
+		return success
 
 	except subprocess.CalledProcessError as e:
 		print(f"Installer build failed with return code: {e.returncode}")
@@ -399,15 +451,31 @@ if __name__ == "__main__":
 		default="requireAdministrator",
 		help="UAC execution level for the installer",
 	)
+	parser.add_argument(
+		"--sign-cert",
+		help="Path to the code signing certificate (.pfx file)",
+	)
+	parser.add_argument(
+		"--sign-pass",
+		help="Password for the code signing certificate",
+	)
 
 	args = parser.parse_args()
 
 	if args.command == "clean":
 		clean()
 	elif args.command == "build":
-		build_app(version=args.version, dev=args.dev, uac_level=args.app_uac)
+		build_app(
+			version=args.version,
+			dev=args.dev,
+			uac_level=args.app_uac,
+			sign_cert=args.sign_cert,
+			sign_pass=args.sign_pass,
+		)
 	elif args.command == "installer":
-		build_installer(uac_level=args.installer_uac)
+		build_installer(
+			uac_level=args.installer_uac, sign_cert=args.sign_cert, sign_pass=args.sign_pass
+		)
 	elif args.command == "package":
 		success = package()
 		if not success:
@@ -421,9 +489,17 @@ if __name__ == "__main__":
 			exit(1)
 		if not build_bootloader():
 			exit(1)
-		if not build_app(args.version, dev=args.dev, uac_level=args.app_uac):
+		if not build_app(
+			args.version,
+			dev=args.dev,
+			uac_level=args.app_uac,
+			sign_cert=args.sign_cert,
+			sign_pass=args.sign_pass,
+		):
 			exit(1)
-		if not build_installer(uac_level=args.installer_uac):
+		if not build_installer(
+			uac_level=args.installer_uac, sign_cert=args.sign_cert, sign_pass=args.sign_pass
+		):
 			exit(1)
 		if not package():
 			exit(1)

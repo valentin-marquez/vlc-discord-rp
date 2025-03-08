@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,14 +17,14 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetching all history to ensure proper version detection
 
-      - name: Set up Python 3.12.6
-        uses: actions/setup-python@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12.6'
+          python-version: '3.11'
           cache: 'pip'
 
       - name: Install dependencies
@@ -46,9 +47,16 @@ jobs:
       - name: Build custom bootloader
         run: python build.py bootloader
 
-      - name: Build and package application
+      - name: Import Code Signing Certificate
         run: |
-          python build.py all --version ${{ steps.get_version.outputs.version }} --app-uac asInvoker --installer-uac requireAdministrator
+          echo "${{ secrets.CODE_SIGNING_CERT }}" | base64 -d > certificate.pfx
+        shell: bash
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Build and package application with signing
+        run: |
+          python build.py all --version ${{ steps.get_version.outputs.version }} --app-uac asInvoker --installer-uac requireAdministrator --sign-cert certificate.pfx --sign-pass "${{ secrets.CODE_SIGNING_PASSWORD }}"
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -68,31 +76,24 @@ jobs:
           $MATCH = [regex]::Match($CHANGELOG, $PATTERN, [System.Text.RegularExpressions.RegexOptions]::Singleline)
           if ($MATCH.Success) {
             $RELEVANT = $MATCH.Value
-            # Remove the next version header if it was captured in the pattern
-            $RELEVANT = $RELEVANT -replace "## \[\d+\.\d+\.\d+\].*$", ""
-            # Use GitHub's multiline output syntax
-            echo "text<<EOF" >> $env:GITHUB_OUTPUT
-            echo "$($RELEVANT.Trim())" >> $env:GITHUB_OUTPUT
-            echo "EOF" >> $env:GITHUB_OUTPUT
+            # Remove the next version header if present
+            $RELEVANT = $RELEVANT -replace "## \[.*$", ""
+            # GitHub Actions multiline output handling
+            $RELEVANT = $RELEVANT -replace "`n", "%0A"
+            echo "text=$RELEVANT" >> $env:GITHUB_OUTPUT
           } else {
             echo "text=No changelog entry found for version $VERSION" >> $env:GITHUB_OUTPUT
           }
         shell: pwsh
 
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v1
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
         with:
-          name: VLC Discord Rich Presence ${{ steps.get_version.outputs.version }} (Pre-release)
-          body: |
-            ${{ steps.changelog.outputs.text }}
-
-            ## Installation
-            Download and run the installer (`VLC Discord RP Setup.exe`), or use the standalone application.
-
-            **Note**: This is a pre-release version and may contain bugs.
+          body: ${{ steps.changelog.outputs.text }}
+          draft: false
+          prerelease: false
           files: |
+            dist/VLC Discord Presence.exe
             dist/VLC Discord RP Setup.exe
             VLC_Discord_RP.zip
-          draft: false
-          prerelease: true  # Changed to true for pre-release
